@@ -1,0 +1,93 @@
+schema {
+  query: Query
+}
+
+type Query {
+  question(titleSlug: String!): Problem
+  activeDailyCodingChallengeQuestion: ActiveDailyCodingChallenge
+}
+
+type ActiveDailyCodingChallenge {
+  date: String!
+  link: String!
+  question: Problem!
+}
+
+enum ProblemDifficulty {
+  Easy
+  Medium
+  Hard
+}
+
+type TopicTag {
+  name: String!
+  slug: String!
+  translatedName: String
+}
+
+type CodeSnippet {
+  lang: String!
+  langSlug: String!
+  code: String!
+}
+
+type OfficialSolution {
+  id: String!
+  canSeeDetail: Boolean!
+  paidOnly: Boolean!
+  hasVideoSolution: Boolean!
+  paidOnlyVideo: Boolean!
+}
+
+type ChallengeQuestion {
+  id: String!
+  date: String!
+  incompleteChallengeCount: Int!
+  streakCount: Int!
+  type: String!
+}
+
+type Contributor {
+  username: String
+  profileUrl: String
+  avatarUrl: String
+}
+
+type Problem {
+  questionId: String!
+  questionFrontendId: String!
+  boundTopicId: String
+  title: String!
+  titleSlug: String!
+  content: String!
+  translatedTitle: String
+  translatedContent: String
+  isPaidOnly: Boolean!
+  difficulty: ProblemDifficulty!
+  likes: Int!
+  dislikes: Int!
+  isLiked: Boolean
+  similarQuestions: String!
+  exampleTestcases: String!
+  contributors: [Contributor!]!
+  topicTags: [TopicTag!]!
+  companyTagStats: String
+  codeSnippets: [CodeSnippet!]!
+  stats: String!
+  hints: [String!]!
+  solution: OfficialSolution!
+  status: String
+  sampleTestCase: String!
+  metaData: String!
+  judgerAvailable: Boolean!
+  judgeType: String!
+  mysqlSchemas: [String!]!
+  enableRunCode: Boolean!
+  enableTestMode: Boolean!
+  enableDebugger: Boolean!
+  envInfo: String!
+  libraryUrl: String
+  adminUrl: String
+  challengeQuestion: ChallengeQuestion!
+  note: String
+}
