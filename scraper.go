@@ -11,10 +11,6 @@ type LeetcodeLink struct {
 	url  string
 }
 
-// TODO: Move this into a package
-func problem(titleSlug string) {
-}
-
 func main() {
 	page := rod.New().MustConnect().MustPage("https://neetcode.io/practice?tab=neetcode150")
 	page.MustElement(`button.navbar-btn.is-rounded[data-tooltip="Show List View"]`).MustClick()
