@@ -1,4 +1,4 @@
-query getProblem($titleSlug: String!) {
+query GetProblem($titleSlug: String!) {
   question(titleSlug: $titleSlug) {
     questionId
     questionFrontendId
@@ -63,7 +63,7 @@ query getProblem($titleSlug: String!) {
   }
 }
 
-query getActiveDailyCodingChallenge {
+query GetActiveDailyCodingChallenge {
   activeDailyCodingChallengeQuestion {
     date
     link

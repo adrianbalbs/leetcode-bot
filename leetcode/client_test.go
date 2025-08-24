@@ -1,4 +1,4 @@
-package leetcode_client
+package leetcode
 
 import (
 	"context"
@@ -11,18 +11,18 @@ import (
 
 func TestGetDailyProblem(t *testing.T) {
 	ctx := context.Background()
-	client := graphql.NewClient(LeetcodeURL, &http.Client{Transport: &userAgentTransport{http.DefaultTransport}})
+	client := graphql.NewClient(LeetcodeURL, &http.Client{Transport: &UserAgentTransport{http.DefaultTransport}})
 
-	resp, err := getActiveDailyCodingChallenge(ctx, client)
+	resp, err := GetActiveDailyCodingChallenge(ctx, client)
 	assert.Nil(t, err)
 	assert.NotNil(t, resp)
 }
 
 func TestGetProblem(t *testing.T) {
 	ctx := context.Background()
-	client := graphql.NewClient(LeetcodeURL, &http.Client{Transport: &userAgentTransport{http.DefaultTransport}})
+	client := graphql.NewClient(LeetcodeURL, &http.Client{Transport: &UserAgentTransport{http.DefaultTransport}})
 
-	resp, err := getProblem(ctx, client, "two-sum")
+	resp, err := GetProblem(ctx, client, "two-sum")
 	assert.Nil(t, err)
 	assert.NotNil(t, resp)
 }

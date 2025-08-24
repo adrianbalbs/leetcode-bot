@@ -1,4 +1,4 @@
-package leetcode_client
+package leetcode
 
 const (
 	LeetcodeURL = "https://leetcode.com/graphql"

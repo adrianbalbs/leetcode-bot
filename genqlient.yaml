@@ -3,4 +3,4 @@
 schema: schema.graphql
 operations:
 - genqlient.graphql
-generated: leetcode_client/client.go
+generated: leetcode/client.go
