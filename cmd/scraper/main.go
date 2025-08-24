@@ -4,6 +4,7 @@ import (
 	"adrainbalbs/leetcode-bot/leetcode"
 	"context"
 	"fmt"
+	"log"
 	"net/http"
 	"strings"
 	"time"
@@ -14,6 +15,7 @@ import (
 
 const (
 	maxWorkers = 10
+	maxRetries = 4
 )
 
 func scrapeNeetcode() []string {
@@ -39,13 +41,18 @@ func scrapeNeetcode() []string {
 
 func worker(ctx context.Context, client graphql.Client, jobs <-chan string, results chan<- *leetcode.GetProblemResponse) {
 	for problem := range jobs {
-		result, err := leetcode.GetProblem(ctx, client, problem)
-		// TODO: need to implement better error handling
-		if err != nil {
-			fmt.Printf("Error: %s", err)
-			continue
+		for attempt := 1; attempt <= maxRetries; attempt++ {
+			response, err := leetcode.GetProblem(ctx, client, problem)
+			if err == nil {
+				results <- response
+				break
+			}
+
+			// Use exponential backoff in between retry attempts
+			backoff := time.Duration(attempt*attempt) * time.Second
+			log.Printf("Retrying %s after error %v", problem, err)
+			time.Sleep(backoff)
 		}
-		results <- result
 	}
 }
 
@@ -73,6 +80,6 @@ func main() {
 	close(jobs)
 	for range problems {
 		res := <-results
-		fmt.Println(res.Question.Title)
+		fmt.Println(res.Question.TitleSlug)
 	}
 }
