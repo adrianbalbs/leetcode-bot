@@ -28,12 +28,10 @@ func scrapeNeetcode() []string {
 	for _, table := range tables {
 		for _, row := range table.MustElements("tr") {
 			rowChild := row.MustElements("td")[2]
-			problemTitle, err := rowChild.MustElement("a.table-text.text-color").Text()
-			if err != nil {
-				fmt.Println("Error: ", err)
-				continue
-			}
-			neetcodeProblems = append(neetcodeProblems, strings.ReplaceAll(strings.Trim(strings.ToLower(problemTitle), " "), " ", "-"))
+
+			link := rowChild.MustElement("a.has-tooltip-bottom").MustAttribute("href")
+			neetcodeProblems = append(neetcodeProblems, strings.Replace(strings.Trim(*link, "/"),
+				"https://leetcode.com/problems/", "", 1))
 		}
 	}
 	return neetcodeProblems
@@ -75,11 +73,14 @@ func main() {
 	}
 
 	for _, problemSlug := range problems {
-		jobs <- problemSlug
+		if problemSlug != "" {
+			jobs <- problemSlug
+		}
 	}
 	close(jobs)
+
 	for range problems {
 		res := <-results
-		fmt.Println(res.Question.TitleSlug)
+		fmt.Printf("Id: %s, Title: %s, Title Slug %s\n", res.Question.QuestionId, res.Question.Title, res.Question.TitleSlug)
 	}
 }
