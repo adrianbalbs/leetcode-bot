@@ -26,13 +26,13 @@ CREATE TABLE IF NOT EXISTS problem_tags (
 );
 
 CREATE TABLE IF NOT EXISTS playlists (
-    id UUID PRIMARY KEY,
+    id INT PRIMARY KEY,
     name TEXT,
     creator TEXT
 );
 
 CREATE TABLE IF NOT EXISTS playlist_entries (
-  playlist_id UUID REFERENCES playlists(id),
+  playlist_id INT REFERENCES playlists(id),
   problem_id INT REFERENCES problems(id),
   PRIMARY KEY (playlist_id, problem_id)
 );
