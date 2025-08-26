@@ -3,14 +3,18 @@ package main
 import (
 	"adrainbalbs/leetcode-bot/leetcode"
 	"context"
+	"database/sql"
 	"fmt"
 	"log"
 	"net/http"
+	"os"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/Khan/genqlient/graphql"
 	"github.com/go-rod/rod"
+	_ "github.com/jackc/pgx/v5/stdlib"
 )
 
 const (
@@ -54,11 +58,99 @@ func worker(ctx context.Context, client graphql.Client, jobs <-chan string, resu
 	}
 }
 
+func insertProblem(db *sql.DB, problem *leetcode.GetProblemResponse, playlistId int64) (int64, error) {
+	tx, err := db.Begin()
+	if err != nil {
+		return 0, err
+	}
+	defer tx.Rollback()
+
+	var difficultyId int64
+	err = tx.QueryRow(`
+        INSERT INTO difficulties (name)
+        VALUES ($1)
+        ON CONFLICT (name) DO UPDATE SET name = EXCLUDED.name
+        RETURNING id
+    `, problem.Question.Difficulty).Scan(&difficultyId)
+	if err != nil {
+		return 0, err
+	}
+
+	var problemId int64
+	err = tx.QueryRow(`
+        INSERT INTO problems (slug, title, difficulty_id)
+        VALUES ($1, $2, $3)
+        ON CONFLICT (slug) DO UPDATE SET title = EXCLUDED.title
+        RETURNING id
+    `, problem.Question.TitleSlug, problem.Question.Title, difficultyId).Scan(&problemId)
+	if err != nil {
+		return 0, err
+	}
+
+	for _, tag := range problem.Question.TopicTags {
+		var tagId int64
+		err := tx.QueryRow(`
+			INSERT INTO tags (name)
+			VALUES ($1)
+			ON CONFLICT (name) DO UPDATE SET name = EXCLUDED.name
+			RETURNING id
+		`, tag.Name).Scan(&tagId)
+		if err != nil {
+			return 0, err
+		}
+
+		_, err = tx.Exec(`
+            INSERT INTO problem_tags (problem_id, tag_id)
+            VALUES ($1, $2)
+            ON CONFLICT DO NOTHING
+		`, problemId, tagId)
+		if err != nil {
+			return 0, err
+		}
+	}
+
+	_, err = tx.Exec(`
+		INSERT INTO playlist_entries (playlist_id, problem_id)
+		VALUES ($1, $2)
+		ON CONFLICT DO NOTHING
+	`, playlistId, problemId)
+
+	err = tx.Commit()
+	if err != nil {
+		return 0, err
+	}
+
+	return problemId, nil
+}
+
 func main() {
 	problems := scrapeNeetcode()
 	jobs := make(chan string, len(problems))
 	results := make(chan *leetcode.GetProblemResponse, len(problems))
 	ctx := context.Background()
+
+	dbConnStr := os.Getenv("DATABASE_URL")
+	db, err := sql.Open("pgx", dbConnStr)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Unable to connect to database %v\n", err)
+		os.Exit(1)
+	}
+	defer db.Close()
+
+	// First, create the neetcode150 playlist
+
+	fmt.Println("Creating Neetcode150 Playlist")
+	var playlistId int64
+	err = db.QueryRow(`
+		INSERT INTO playlists (name, creator)
+		VALUES($1, $2)
+		ON CONFLICT (name) DO UPDATE SET name = EXCLUDED.name
+		RETURNING id
+	`, "Neetcode150", "Neetcode.io").Scan(&playlistId)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error creating playlist %v\n", err)
+		os.Exit(1)
+	}
 
 	client := graphql.NewClient(leetcode.LeetcodeURL,
 		&http.Client{
@@ -68,8 +160,15 @@ func main() {
 			Timeout: 10 * time.Second,
 		})
 
+	fmt.Println("Fetching and inserting problems")
+
+	var wg sync.WaitGroup
 	for range maxWorkers {
-		go worker(ctx, client, jobs, results)
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			worker(ctx, client, jobs, results)
+		}()
 	}
 
 	for _, problemSlug := range problems {
@@ -79,8 +178,19 @@ func main() {
 	}
 	close(jobs)
 
-	for range problems {
-		res := <-results
-		fmt.Printf("Id: %s, Title: %s, Title Slug %s\n", res.Question.QuestionId, res.Question.Title, res.Question.TitleSlug)
+	go func() {
+		wg.Wait()
+		close(results)
+	}()
+
+	for res := range results {
+		fmt.Printf("Inserting %s\n", res.Question.Title)
+		_, err := insertProblem(db, res, playlistId)
+		if err != nil {
+			log.Printf("Failed inserting problem %s: %v", res.Question.TitleSlug, err)
+			continue
+		}
 	}
+
+	fmt.Println("Finished scraping neetcode problems")
 }
