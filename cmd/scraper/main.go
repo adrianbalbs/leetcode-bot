@@ -41,7 +41,9 @@ func scrapeNeetcode() []string {
 	return neetcodeProblems
 }
 
-func worker(ctx context.Context, client graphql.Client, jobs <-chan string, results chan<- *leetcode.GetProblemResponse) {
+func worker(ctx context.Context, client graphql.Client, jobs <-chan string, results chan<- *leetcode.GetProblemResponse, wg *sync.WaitGroup) {
+	wg.Add(1)
+	defer wg.Done()
 	for problem := range jobs {
 		for attempt := 1; attempt <= maxRetries; attempt++ {
 			response, err := leetcode.GetProblem(ctx, client, problem)
@@ -58,10 +60,10 @@ func worker(ctx context.Context, client graphql.Client, jobs <-chan string, resu
 	}
 }
 
-func insertProblem(db *sql.DB, problem *leetcode.GetProblemResponse, playlistId int64) (int64, error) {
+func insertProblem(db *sql.DB, problem *leetcode.GetProblemResponse, playlistId int64) error {
 	tx, err := db.Begin()
 	if err != nil {
-		return 0, err
+		return err
 	}
 	defer tx.Rollback()
 
@@ -73,7 +75,7 @@ func insertProblem(db *sql.DB, problem *leetcode.GetProblemResponse, playlistId 
         RETURNING id
     `, problem.Question.Difficulty).Scan(&difficultyId)
 	if err != nil {
-		return 0, err
+		return err
 	}
 
 	var problemId int64
@@ -84,7 +86,7 @@ func insertProblem(db *sql.DB, problem *leetcode.GetProblemResponse, playlistId 
         RETURNING id
     `, problem.Question.TitleSlug, problem.Question.Title, difficultyId).Scan(&problemId)
 	if err != nil {
-		return 0, err
+		return err
 	}
 
 	for _, tag := range problem.Question.TopicTags {
@@ -96,7 +98,7 @@ func insertProblem(db *sql.DB, problem *leetcode.GetProblemResponse, playlistId 
 			RETURNING id
 		`, tag.Name).Scan(&tagId)
 		if err != nil {
-			return 0, err
+			return err
 		}
 
 		_, err = tx.Exec(`
@@ -105,7 +107,7 @@ func insertProblem(db *sql.DB, problem *leetcode.GetProblemResponse, playlistId 
             ON CONFLICT DO NOTHING
 		`, problemId, tagId)
 		if err != nil {
-			return 0, err
+			return err
 		}
 	}
 
@@ -117,10 +119,10 @@ func insertProblem(db *sql.DB, problem *leetcode.GetProblemResponse, playlistId 
 
 	err = tx.Commit()
 	if err != nil {
-		return 0, err
+		return err
 	}
 
-	return problemId, nil
+	return nil
 }
 
 func main() {
@@ -164,11 +166,7 @@ func main() {
 
 	var wg sync.WaitGroup
 	for range maxWorkers {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			worker(ctx, client, jobs, results)
-		}()
+		go worker(ctx, client, jobs, results, &wg)
 	}
 
 	for _, problemSlug := range problems {
@@ -185,7 +183,7 @@ func main() {
 
 	for res := range results {
 		fmt.Printf("Inserting %s\n", res.Question.Title)
-		_, err := insertProblem(db, res, playlistId)
+		err := insertProblem(db, res, playlistId)
 		if err != nil {
 			log.Printf("Failed inserting problem %s: %v", res.Question.TitleSlug, err)
 			continue
