@@ -4,7 +4,6 @@ import (
 	"adrainbalbs/leetcode-bot/leetcode"
 	"context"
 	"database/sql"
-	"fmt"
 	"log"
 	"net/http"
 	"os"
@@ -41,9 +40,7 @@ func scrapeNeetcode() []string {
 	return neetcodeProblems
 }
 
-func worker(ctx context.Context, client graphql.Client, jobs <-chan string, results chan<- *leetcode.GetProblemResponse, wg *sync.WaitGroup) {
-	wg.Add(1)
-	defer wg.Done()
+func worker(ctx context.Context, client graphql.Client, jobs <-chan string, results chan<- *leetcode.GetProblemResponse) {
 	for problem := range jobs {
 		for attempt := 1; attempt <= maxRetries; attempt++ {
 			response, err := leetcode.GetProblem(ctx, client, problem)
@@ -126,6 +123,7 @@ func insertProblem(db *sql.DB, problem *leetcode.GetProblemResponse, playlistId 
 }
 
 func main() {
+	log.Println("Scraping Neetcode")
 	problems := scrapeNeetcode()
 	jobs := make(chan string, len(problems))
 	results := make(chan *leetcode.GetProblemResponse, len(problems))
@@ -134,14 +132,14 @@ func main() {
 	dbConnStr := os.Getenv("DATABASE_URL")
 	db, err := sql.Open("pgx", dbConnStr)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Unable to connect to database %v\n", err)
+		log.Printf("Unable to connect to database %v\n", err)
 		os.Exit(1)
 	}
 	defer db.Close()
 
 	// First, create the neetcode150 playlist
 
-	fmt.Println("Creating Neetcode150 Playlist")
+	log.Println("Creating Neetcode150 Playlist")
 	var playlistId int64
 	err = db.QueryRow(`
 		INSERT INTO playlists (name, creator)
@@ -150,7 +148,7 @@ func main() {
 		RETURNING id
 	`, "Neetcode150", "Neetcode.io").Scan(&playlistId)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error creating playlist %v\n", err)
+		log.Printf("Error creating playlist %v\n", err)
 		os.Exit(1)
 	}
 
@@ -162,11 +160,15 @@ func main() {
 			Timeout: 10 * time.Second,
 		})
 
-	fmt.Println("Fetching and inserting problems")
+	log.Println("Fetching and inserting problems")
 
 	var wg sync.WaitGroup
 	for range maxWorkers {
-		go worker(ctx, client, jobs, results, &wg)
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			worker(ctx, client, jobs, results)
+		}()
 	}
 
 	for _, problemSlug := range problems {
@@ -182,7 +184,7 @@ func main() {
 	}()
 
 	for res := range results {
-		fmt.Printf("Inserting %s\n", res.Question.Title)
+		log.Printf("Inserting %s\n", res.Question.Title)
 		err := insertProblem(db, res, playlistId)
 		if err != nil {
 			log.Printf("Failed inserting problem %s: %v", res.Question.TitleSlug, err)
@@ -190,5 +192,5 @@ func main() {
 		}
 	}
 
-	fmt.Println("Finished scraping neetcode problems")
+	log.Println("Finished scraping neetcode problems")
 }
